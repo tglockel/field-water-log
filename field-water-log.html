@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Field & Water Log</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Source+Code+Pro:wght@400;600&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #0b0e0f;
+    --surface: #131718;
+    --surface2: #1c2022;
+    --border: #2a3035;
+    --text: #dde8e4;
+    --text2: #8aa09a;
+    --text3: #4a6060;
+    --hunt: #c8860a;
+    --hunt2: #e8a020;
+    --fish: #1a7fa0;
+    --fish2: #30a8d0;
+    --red: #c04020;
+    --green: #4a8c3a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Lato', sans-serif; min-height: 100vh; }
+  .app { max-width: 480px; margin: 0 auto; padding-bottom: 60px; }
+
+  /* MODE BAR */
+  .mode-bar { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .mode-btn {
+    padding: 15px 8px; background: none; border: none; border-bottom: 3px solid transparent;
+    font-family: 'Playfair Display', serif; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: all 0.25s; color: var(--text3);
+  }
+  .mode-btn.hunt.active { color: var(--hunt2); border-bottom-color: var(--hunt); background: rgba(200,134,10,0.07); }
+  .mode-btn.fish.active { color: var(--fish2); border-bottom-color: var(--fish); background: rgba(26,127,160,0.07); }
+
+  /* HEADER */
+  .header { padding: 18px 20px 13px; border-bottom: 1px solid var(--border); transition: background 0.3s; }
+  .header.hunt { background: linear-gradient(150deg, rgba(200,134,10,0.1) 0%, transparent 55%); }
+  .header.fish { background: linear-gradient(150deg, rgba(26,127,160,0.1) 0%, transparent 55%); }
+  .logo { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 900; }
+  .logo.hunt { color: var(--hunt2); }
+  .logo.fish { color: var(--fish2); }
+  .logo-sub { font-family: 'Source Code Pro', monospace; font-size: 10px; letter-spacing: 3px; color: var(--text3); margin-top: 3px; }
+
+  /* NAV */
+  .nav { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 200; }
+  .nav-btn {
+    flex: 1; padding: 12px 4px; background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--text3); font-family: 'Source Code Pro', monospace; font-size: 10px;
+    letter-spacing: 2px; text-transform: uppercase; cursor: pointer; transition: all 0.2s;
+  }
+  .nav-btn.active { border-bottom-color: var(--accent); color: var(--accent2); }
+
+  /* PAGES */
+  .page { display: none; padding: 15px; }
+  .page.active { display: block; }
+
+  /* SETUP BANNER */
+  .setup-banner { background: rgba(192,64,32,0.12); border: 1px solid var(--red); border-radius: 8px; padding: 13px; margin-bottom: 13px; font-size: 13px; line-height: 1.7; color: #ffb0a0; display: none; }
+  .setup-banner strong { color: #ff8060; display: block; margin-bottom: 2px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+
+  /* CARD */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 15px; margin-bottom: 13px; }
+  .card-label { font-family: 'Source Code Pro', monospace; font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--text3); margin-bottom: 11px; }
+
+  /* STATS */
+  .stats-row { display: grid; gap: 7px; margin-bottom: 13px; }
+  .stats-row.cols-3 { grid-template-columns: repeat(3,1fr); }
+  .stats-row.cols-2 { grid-template-columns: repeat(2,1fr); }
+  .stat-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 11px 6px; text-align: center; }
+  .stat-num { font-family: 'Playfair Display', serif; font-size: 24px; line-height: 1; }
+  .stat-num.hunt { color: var(--hunt2); }
+  .stat-num.fish { color: var(--fish2); }
+  .stat-lbl { font-family: 'Source Code Pro', monospace; font-size: 9px; color: var(--text3); letter-spacing: 2px; text-transform: uppercase; margin-top: 3px; }
+
+  /* FORM */
+  label { display: block; font-family: 'Source Code Pro', monospace; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--text3); margin-bottom: 5px; margin-top: 13px; }
+  label:first-child { margin-top: 0; }
+  input, select { width: 100%; padding: 10px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: 'Lato', sans-serif; font-size: 15px; outline: none; transition: border-color 0.2s; -webkit-appearance: none; }
+  select option { background: var(--surface2); }
+
+  /* BUTTONS */
+  .btn { display: block; width: 100%; padding: 13px; border: none; border-radius: 8px; font-family: 'Lato', sans-serif; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; margin-top: 11px; }
+  .btn-hunt { background: var(--hunt); color: #000; }
+  .btn-hunt:hover { background: var(--hunt2); }
+  .btn-fish { background: var(--fish); color: #fff; }
+  .btn-fish:hover { background: var(--fish2); }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: rgba(192,64,32,0.2); color: #ff8060; border: 1px solid var(--red); }
+  .btn:disabled { background: var(--border) !important; color: var(--text3) !important; cursor: not-allowed; }
+
+  /* WEATHER GRID */
+  .wx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 0; }
+  .wx-cell { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+  .wx-cell.full { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
+  .wx-lbl { font-family: 'Source Code Pro', monospace; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--text3); margin-bottom: 3px; }
+  .wx-val { font-size: 14px; color: var(--text); font-weight: 600; }
+  .wx-val.pending { color: var(--text3); font-weight: 400; font-size: 13px; }
+
+  /* LOC ITEMS */
+  .loc-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-bottom: 7px; display: flex; align-items: center; justify-content: space-between; }
+  .loc-name { font-weight: 700; font-size: 14px; }
+  .loc-meta { font-family: 'Source Code Pro', monospace; font-size: 10px; color: var(--text3); margin-top: 2px; line-height: 1.5; }
+  .count-pin { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; flex-shrink: 0; margin-left: 10px; }
+  .count-pin.hunt-has { background: var(--hunt); color: #000; }
+  .count-pin.fish-has { background: var(--fish); color: #fff; }
+  .count-pin.none { background: var(--surface); border: 1px solid var(--border); color: var(--text3); }
+
+  /* TRIPS */
+  .trip-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 11px; overflow: hidden; }
+  .trip-header { padding: 12px 15px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .trip-header.hunt { border-left: 3px solid var(--hunt); }
+  .trip-header.fish { border-left: 3px solid var(--fish); }
+  .trip-date { font-family: 'Playfair Display', serif; font-size: 17px; }
+  .trip-date.hunt { color: var(--hunt2); }
+  .trip-date.fish { color: var(--fish2); }
+  .trip-meta { font-family: 'Source Code Pro', monospace; font-size: 10px; color: var(--text3); margin-top: 2px; }
+  .trip-summary { font-family: 'Source Code Pro', monospace; font-size: 11px; color: var(--text3); text-align: right; }
+  .trip-body { padding: 11px 13px; }
+
+  /* FILTER TABS */
+  .filter-tabs { display: flex; gap: 7px; margin-bottom: 13px; }
+  .filter-tab { padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); background: none; color: var(--text3); font-family: 'Source Code Pro', monospace; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
+  .filter-tab.active-all { background: var(--surface2); border-color: var(--text2); color: var(--text); }
+  .filter-tab.active-hunt { background: rgba(200,134,10,0.12); border-color: var(--hunt); color: var(--hunt2); }
+  .filter-tab.active-fish { background: rgba(26,127,160,0.12); border-color: var(--fish); color: var(--fish2); }
+
+  /* MAP */
+  .map-wrap { width: 100%; height: 430px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 13px; overflow: hidden; }
+
+  /* STATUS */
+  .status { font-family: 'Source Code Pro', monospace; font-size: 12px; padding: 9px 12px; border-radius: 6px; margin-top: 10px; display: none; line-height: 1.5; }
+  .status.info { background: rgba(200,134,10,0.08); border: 1px solid var(--hunt); color: var(--hunt2); display: block; }
+  .status.info.fish { background: rgba(26,127,160,0.08); border-color: var(--fish); color: var(--fish2); }
+  .status.error { background: rgba(192,64,32,0.1); border: 1px solid var(--red); color: #ff8060; display: block; }
+  .status.success { background: rgba(74,140,58,0.1); border: 1px solid var(--green); color: #80cc60; display: block; }
+
+  .divider { height: 1px; background: var(--border); margin: 13px 0; }
+  .empty-state { text-align: center; padding: 36px 20px; color: var(--text3); font-family: 'Source Code Pro', monospace; font-size: 12px; letter-spacing: 1px; }
+  .empty-state .icon { font-size: 34px; margin-bottom: 10px; }
+
+  /* PRESSURE TREND */
+  .trend-up { color: #60cc80; }
+  .trend-down { color: #ff8060; }
+  .trend-flat { color: var(--text2); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="mode-bar">
+    <button class="mode-btn hunt active" id="mode-hunt" onclick="setMode('hunt')">🦃 Pheasant Hunt</button>
+    <button class="mode-btn fish" id="mode-fish" onclick="setMode('fish')">🎣 Fishing</button>
+  </div>
+
+  <div class="header hunt" id="main-header">
+    <div class="logo hunt" id="main-logo">Rooster Log</div>
+    <div class="logo-sub" id="main-sub">2026 PHEASANT SEASON</div>
+  </div>
+
+  <nav class="nav" id="main-nav">
+    <button class="nav-btn active" onclick="showPage('log',event)">Log</button>
+    <button class="nav-btn" onclick="showPage('map',event)">Map</button>
+    <button class="nav-btn" onclick="showPage('trips',event)">Trips</button>
+    <button class="nav-btn" onclick="showPage('settings',event)">Settings</button>
+  </nav>
+
+  <!-- ====== LOG PAGE ====== -->
+  <div id="page-log" class="page active">
+
+    <div id="setup-banner" class="setup-banner">
+      <strong>⚠ Google Sheets Not Connected</strong>
+      Go to Settings and add your credentials to save data permanently. Until then data is local only.
+    </div>
+
+    <!-- Today card -->
+    <div class="card">
+      <div class="card-label" id="today-card-label">Today — <span id="today-date">—</span></div>
+      <div id="hunt-stats" class="stats-row cols-3">
+        <div class="stat-box"><div class="stat-num hunt" id="today-locs">0</div><div class="stat-lbl">Locations</div></div>
+        <div class="stat-box"><div class="stat-num hunt" id="today-birds">0</div><div class="stat-lbl">Birds</div></div>
+        <div class="stat-box"><div class="stat-num hunt" id="today-miles">—</div><div class="stat-lbl">Miles</div></div>
+      </div>
+      <div id="fish-stats" class="stats-row cols-2" style="display:none">
+        <div class="stat-box"><div class="stat-num fish" id="today-fish-locs">0</div><div class="stat-lbl">Locations</div></div>
+        <div class="stat-box"><div class="stat-num fish" id="today-fish">0</div><div class="stat-lbl">Fish</div></div>
+      </div>
+      <div id="today-list"></div>
+
+      <!-- Miles (hunt only) -->
+      <div id="miles-section" style="display:flex;gap:8px;margin-top:8px;">
+        <div style="flex:1"><label>Miles Today</label><input type="number" id="miles-input" placeholder="0.0" step="0.1" min="0"></div>
+        <div style="display:flex;align-items:flex-end;flex:0 0 auto;"><button class="btn btn-secondary" style="width:auto;padding:10px 14px;margin-top:0" onclick="saveMiles()">Save</button></div>
+      </div>
+    </div>
+
+    <!-- New location card -->
+    <div class="card">
+      <div class="card-label" id="new-loc-label">New Location</div>
+
+      <label>Spot Name</label>
+      <select id="spot-select" onchange="handleSpotSelect()">
+        <option value="">— select or type new —</option>
+      </select>
+      <input type="text" id="spot-new" placeholder="Type new spot name..." style="margin-top:7px;display:none">
+
+      <label style="margin-top:13px;">Weather at This Location</label>
+      <div class="wx-grid" id="wx-grid">
+        <div class="wx-cell full"><div><div class="wx-lbl">Status</div><div class="wx-val pending" id="wx-status-text">Press Capture to fetch conditions</div></div></div>
+      </div>
+
+      <label id="count-label">Birds Downed at This Spot</label>
+      <input type="number" id="count-input" value="0" min="0" max="999">
+
+      <button class="btn btn-hunt" id="capture-btn" onclick="captureLocation()">📍 Capture Location + Weather</button>
+      <div id="log-status" class="status"></div>
+    </div>
+
+  </div>
+
+  <!-- ====== MAP PAGE ====== -->
+  <div id="page-map" class="page">
+    <div class="map-wrap" id="hunt-map-wrap"><div id="hunt-map" style="width:100%;height:100%"></div></div>
+    <div class="map-wrap" id="fish-map-wrap" style="display:none"><div id="fish-map" style="width:100%;height:100%"></div></div>
+    <div id="map-empty" class="empty-state" style="display:none">
+      <div class="icon" id="map-empty-icon">🗺</div>
+      <div id="map-empty-text">No locations logged yet.</div>
+    </div>
+  </div>
+
+  <!-- ====== TRIPS PAGE ====== -->
+  <div id="page-trips" class="page">
+    <div class="filter-tabs">
+      <button class="filter-tab active-all" id="ftab-all" onclick="setFilter('all')">All</button>
+      <button class="filter-tab" id="ftab-hunt" onclick="setFilter('hunt')">🦃 Hunt</button>
+      <button class="filter-tab" id="ftab-fish" onclick="setFilter('fish')">🎣 Fish</button>
+    </div>
+    <div id="trips-list"></div>
+  </div>
+
+  <!-- ====== SETTINGS PAGE ====== -->
+  <div id="page-settings" class="page">
+
+    <div class="card">
+      <div class="card-label">Google Sheets Setup</div>
+      <p style="font-size:13px;color:var(--text3);line-height:1.7;margin-bottom:13px;">One-time setup to save all data permanently to your Google Sheet.</p>
+
+      <div style="font-size:13px;line-height:1.9;color:var(--text2);">
+        <b style="color:var(--hunt2)">Step 1.</b> Go to <a href="https://sheets.google.com" target="_blank" style="color:var(--hunt)">sheets.google.com</a> → create a new sheet named "Outdoors Log".<br><br>
+        <b style="color:var(--hunt2)">Step 2.</b> Create two tabs at the bottom: name them <b>Hunt</b> and <b>Fish</b>.<br><br>
+        <b style="color:var(--hunt2)">Step 3.</b> In the <b>Hunt</b> tab, row 1, add these headers:<br>
+        <code style="background:var(--surface2);padding:3px 8px;border-radius:4px;font-family:'Source Code Pro',monospace;font-size:10px;display:block;margin:5px 0;color:var(--hunt2);">Date | TripID | SpotName | Lat | Lng | WindSpeed | WindDir | FeelsLike | CloudCover | Precip | SoilMoisture | Birds | Miles</code>
+        <br>
+        <b style="color:var(--fish2)">Step 4.</b> In the <b>Fish</b> tab, row 1, add these headers:<br>
+        <code style="background:var(--surface2);padding:3px 8px;border-radius:4px;font-family:'Source Code Pro',monospace;font-size:10px;display:block;margin:5px 0;color:var(--fish2);">Date | TripID | SpotName | Lat | Lng | WindSpeed | WindDir | FeelsLike | CloudCover | Pressure | PressureTrend | Fish</code>
+        <br>
+        <b style="color:var(--hunt2)">Step 5.</b> Copy the Sheet ID from the URL (the long string between /d/ and /edit).<br><br>
+        <b style="color:var(--hunt2)">Step 6.</b> Go to <a href="https://script.google.com" target="_blank" style="color:var(--hunt)">script.google.com</a> → New Project → paste the Apps Script below → Deploy as Web App (access: Anyone).<br><br>
+        <b style="color:var(--hunt2)">Step 7.</b> Paste both IDs below and save.
+      </div>
+
+      <div class="divider"></div>
+      <div class="card-label">Apps Script Code</div>
+      <textarea id="apps-script-code" readonly style="width:100%;height:180px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text3);font-family:'Source Code Pro',monospace;font-size:10px;padding:10px;resize:none;line-height:1.5;"></textarea>
+      <button class="btn btn-secondary" onclick="copyScript()">Copy Apps Script</button>
+
+      <div class="divider"></div>
+      <label>Google Sheet ID</label>
+      <input type="text" id="sheet-id-input" placeholder="Paste Sheet ID here">
+      <label>Apps Script Web App URL</label>
+      <input type="text" id="script-url-input" placeholder="https://script.google.com/macros/s/.../exec">
+      <button class="btn btn-hunt" onclick="saveSettings()">Save & Connect</button>
+      <div id="settings-status" class="status"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Saved Spots</div>
+      <div id="spots-list"><div style="color:var(--text3);font-size:13px;">No spots saved yet.</div></div>
+      <button class="btn btn-danger" onclick="clearSpots()">Clear All Spots</button>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Data Management</div>
+      <button class="btn btn-secondary" onclick="exportCSV('hunt')">Export Hunt Data (CSV)</button>
+      <button class="btn btn-secondary" onclick="exportCSV('fish')">Export Fish Data (CSV)</button>
+      <button class="btn btn-danger" onclick="clearAllData()" style="margin-top:8px;">Clear All Local Data</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────
+let mode = 'hunt'; // 'hunt' | 'fish'
+let config = JSON.parse(localStorage.getItem('rl_config') || '{}');
+let spots = JSON.parse(localStorage.getItem('rl_spots') || '[]');
+let huntEntries = JSON.parse(localStorage.getItem('rl_hunt') || '[]');
+let fishEntries = JSON.parse(localStorage.getItem('rl_fish') || '[]');
+let pending = { lat: null, lng: null, wx: null, captured: false };
+let maps = { hunt: null, fish: null };
+let activePage = 'log';
+let tripsFilter = 'all';
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function formatDate(s) {
+  const [y,m,d] = s.split('-');
+  return `${MONTHS[parseInt(m)-1]} ${parseInt(d)}, ${y}`;
+}
+function formatDateShort(s) {
+  const [y,m,d] = s.split('-');
+  return `${MONTHS[parseInt(m)-1]} ${parseInt(d)}`;
+}
+
+// ─── APPS SCRIPT ─────────────────────────────────────────────
+const APPS_SCRIPT = `function doPost(e) {
+  try {
+    var ss = SpreadsheetApp.openById('YOUR_SHEET_ID_HERE');
+    var data = JSON.parse(e.postData.contents);
+    var sheetName = data.sheet === 'fish' ? 'Fish' : 'Hunt';
+    var sheet = ss.getSheetByName(sheetName);
+    var row = data.sheet === 'fish'
+      ? [data.Date,data.TripID,data.SpotName,data.Lat,data.Lng,
+         data.WindSpeed,data.WindDir,data.FeelsLike,data.CloudCover,
+         data.Pressure,data.PressureTrend,data.Fish]
+      : [data.Date,data.TripID,data.SpotName,data.Lat,data.Lng,
+         data.WindSpeed,data.WindDir,data.FeelsLike,data.CloudCover,
+         data.Precip,data.SoilMoisture,data.Birds,data.Miles];
+    sheet.appendRow(row);
+    return ContentService
+      .createTextOutput(JSON.stringify({success:true}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({success:false,error:err.message}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
+document.getElementById('apps-script-code').value = APPS_SCRIPT;
+
+function copyScript() {
+  navigator.clipboard.writeText(APPS_SCRIPT).then(() => showStatus('settings-status','Copied!','success'));
+}
+
+// ─── MODE ─────────────────────────────────────────────────────
+function setMode(m) {
+  mode = m;
+  document.getElementById('mode-hunt').classList.toggle('active', m==='hunt');
+  document.getElementById('mode-fish').classList.toggle('active', m==='fish');
+
+  const header = document.getElementById('main-header');
+  const logo = document.getElementById('main-logo');
+  const sub = document.getElementById('main-sub');
+  header.className = 'header ' + m;
+  logo.className = 'logo ' + m;
+  logo.textContent = m === 'hunt' ? 'Rooster Log' : 'Water Log';
+  sub.textContent = m === 'hunt' ? '2026 PHEASANT SEASON' : '2026 FISHING SEASON';
+
+  // Nav accent color via CSS var swap
+  document.documentElement.style.setProperty('--accent', m==='hunt' ? 'var(--hunt)' : 'var(--fish)');
+  document.documentElement.style.setProperty('--accent2', m==='hunt' ? 'var(--hunt2)' : 'var(--fish2)');
+
+  // Update capture button class
+  const btn = document.getElementById('capture-btn');
+  btn.className = 'btn btn-' + m;
+
+  // Update count label
+  document.getElementById('count-label').textContent = m === 'hunt' ? 'Birds Downed at This Spot' : 'Fish Caught at This Spot';
+  document.getElementById('count-input').value = 0;
+
+  // Show/hide miles
+  document.getElementById('miles-section').style.display = m === 'hunt' ? 'flex' : 'none';
+
+  // Stats visibility
+  document.getElementById('hunt-stats').style.display = m === 'hunt' ? 'grid' : 'none';
+  document.getElementById('fish-stats').style.display = m === 'fish' ? 'grid' : 'none';
+
+  // Reset weather
+  pending = { lat: null, lng: null, wx: null, captured: false };
+  renderWxGrid(null);
+  btn.textContent = '📍 Capture Location + Weather';
+  btn.onclick = captureLocation;
+  btn.disabled = false;
+  hideStatus('log-status');
+
+  populateSpotDropdown();
+  renderToday();
+  if (activePage === 'map') renderMap();
+}
+
+// ─── NAV ──────────────────────────────────────────────────────
+function showPage(name, e) {
+  activePage = name;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  if (e && e.target) e.target.classList.add('active');
+
+  if (name === 'map') renderMap();
+  if (name === 'trips') renderTrips();
+  if (name === 'settings') renderSettings();
+  if (name === 'log') renderToday();
+}
+
+// ─── SPOTS ────────────────────────────────────────────────────
+function populateSpotDropdown() {
+  const sel = document.getElementById('spot-select');
+  sel.innerHTML = '<option value="">— select or type new —</option>';
+  spots.filter(s => s.mode === mode).map(s => s.name).sort().forEach(n => {
+    const o = document.createElement('option');
+    o.value = n; o.textContent = n; sel.appendChild(o);
+  });
+  const o = document.createElement('option');
+  o.value = '__new__'; o.textContent = '+ Add new spot...';
+  sel.appendChild(o);
+}
+
+function handleSpotSelect() {
+  const v = document.getElementById('spot-select').value;
+  document.getElementById('spot-new').style.display = v === '__new__' ? 'block' : 'none';
+  if (v === '__new__') document.getElementById('spot-new').focus();
+}
+
+function addSpot(name) {
+  if (!spots.find(s => s.name === name && s.mode === mode)) {
+    spots.push({ name, mode });
+    spots.sort((a,b) => a.name.localeCompare(b.name));
+    localStorage.setItem('rl_spots', JSON.stringify(spots));
+    populateSpotDropdown();
+  }
+}
+
+// ─── WEATHER ──────────────────────────────────────────────────
+function degToCompass(deg) {
+  return ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(deg/22.5)%16];
+}
+function windArrow(deg) {
+  return ['↓','↙','←','↖','↑','↗','→','↘'][Math.round(deg/45)%8];
+}
+function mbarToInHg(mbar) { return (mbar * 0.02953).toFixed(2); }
+function soilMoistureLabel(pct) {
+  if (pct <= 10) return `Dry (${pct}%)`;
+  if (pct <= 25) return `Slightly Damp (${pct}%)`;
+  if (pct <= 45) return `Damp (${pct}%)`;
+  if (pct <= 65) return `Wet (${pct}%)`;
+  return `Saturated (${pct}%)`;
+}
+function pressureTrend(current, prev) {
+  const diff = current - prev;
+  if (diff > 1) return { label: '↑ Rising', cls: 'trend-up' };
+  if (diff < -1) return { label: '↓ Falling', cls: 'trend-down' };
+  return { label: '→ Steady', cls: 'trend-flat' };
+}
+
+function renderWxGrid(wx) {
+  const grid = document.getElementById('wx-grid');
+  if (!wx) {
+    grid.innerHTML = `<div class="wx-cell full"><div><div class="wx-lbl">Status</div><div class="wx-val pending">Press Capture to fetch conditions</div></div></div>`;
+    return;
+  }
+  if (mode === 'hunt') {
+    grid.innerHTML = `
+      <div class="wx-cell full">
+        <div style="font-size:20px">${windArrow(wx.windDeg)}</div>
+        <div><div class="wx-lbl">Wind</div><div class="wx-val">${wx.windDir} ${wx.windSpeed} mph</div></div>
+      </div>
+      <div class="wx-cell"><div class="wx-lbl">Feels Like</div><div class="wx-val">${wx.feelsLike}°F</div></div>
+      <div class="wx-cell"><div class="wx-lbl">Cloud Cover</div><div class="wx-val">${wx.cloudCover}%</div></div>
+      <div class="wx-cell"><div class="wx-lbl">Precipitation</div><div class="wx-val">${wx.precip > 0 ? wx.precip + ' in/hr' : 'None'}</div></div>
+      <div class="wx-cell"><div class="wx-lbl">Soil Moisture</div><div class="wx-val">${wx.soilMoisture != null ? soilMoistureLabel(wx.soilMoisture) : '—'}</div></div>`;
+  } else {
+    const trend = pressureTrend(wx.pressureNow, wx.pressurePrev);
+    grid.innerHTML = `
+      <div class="wx-cell full">
+        <div style="font-size:20px">${windArrow(wx.windDeg)}</div>
+        <div><div class="wx-lbl">Wind</div><div class="wx-val">${wx.windDir} ${wx.windSpeed} mph</div></div>
+      </div>
+      <div class="wx-cell"><div class="wx-lbl">Feels Like</div><div class="wx-val">${wx.feelsLike}°F</div></div>
+      <div class="wx-cell"><div class="wx-lbl">Cloud Cover</div><div class="wx-val">${wx.cloudCover}%</div></div>
+      <div class="wx-cell"><div class="wx-lbl">Pressure</div><div class="wx-val">${mbarToInHg(wx.pressureNow)} inHg</div></div>
+      <div class="wx-cell"><div class="wx-lbl">Trend (24hr)</div><div class="wx-val ${trend.cls}">${trend.label}</div></div>`;
+  }
+}
+
+// ─── CAPTURE ──────────────────────────────────────────────────
+async function captureLocation() {
+  const btn = document.getElementById('capture-btn');
+  btn.disabled = true;
+  btn.textContent = '📡 Getting GPS...';
+  showStatus('log-status', 'Requesting location access...', 'info');
+
+  navigator.geolocation.getCurrentPosition(async pos => {
+    pending.lat = pos.coords.latitude;
+    pending.lng = pos.coords.longitude;
+    btn.textContent = '🌦 Fetching weather...';
+    showStatus('log-status', `GPS locked (${pending.lat.toFixed(4)}, ${pending.lng.toFixed(4)}) — fetching weather...`, 'info');
+
+    try {
+      // Get current + hourly for pressure trend (need 24hrs ago)
+      const now = new Date();
+      const yesterday = new Date(now - 24*60*60*1000);
+      const pad = n => String(n).padStart(2,'0');
+      const startDate = `${yesterday.getFullYear()}-${pad(yesterday.getMonth()+1)}-${pad(yesterday.getDate())}`;
+      const endDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${pending.lat}&longitude=${pending.lng}`
+        + `&current=wind_speed_10m,wind_direction_10m,apparent_temperature,cloud_cover,precipitation,surface_pressure,soil_moisture_0_to_1cm`
+        + `&hourly=surface_pressure`
+        + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch`
+        + `&timezone=auto&start_date=${startDate}&end_date=${endDate}`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+      const c = data.current;
+
+      // Find pressure 24hrs ago from hourly
+      const hourlyTimes = data.hourly.time;
+      const hourlyPressure = data.hourly.surface_pressure;
+      const nowHour = now.toISOString().slice(0,13);
+      const thenHour = yesterday.toISOString().slice(0,13);
+      const nowIdx = hourlyTimes.findIndex(t => t.startsWith(nowHour));
+      const thenIdx = hourlyTimes.findIndex(t => t.startsWith(thenHour));
+      const pressureNow = c.surface_pressure;
+      const pressurePrev = thenIdx >= 0 ? hourlyPressure[thenIdx] : pressureNow;
+
+      pending.wx = {
+        windSpeed: Math.round(c.wind_speed_10m),
+        windDir: degToCompass(c.wind_direction_10m),
+        windDeg: c.wind_direction_10m,
+        feelsLike: Math.round(c.apparent_temperature),
+        cloudCover: c.cloud_cover,
+        precip: c.precipitation,
+        soilMoisture: c.soil_moisture_0_to_1cm != null ? Math.round(c.soil_moisture_0_to_1cm * 100) : null,
+        pressureNow,
+        pressurePrev
+      };
+      pending.captured = true;
+
+      renderWxGrid(pending.wx);
+      showStatus('log-status', '✓ Weather captured. Enter count and save.', 'success');
+      btn.textContent = '💾 Save This Location';
+      btn.onclick = saveLocation;
+      btn.disabled = false;
+
+    } catch(err) {
+      showStatus('log-status', 'Weather fetch failed — you can still save without it.', 'error');
+      pending.wx = { windSpeed:'—', windDir:'—', windDeg:0, feelsLike:'—', cloudCover:'—', precip:'—', pressureNow:0, pressurePrev:0 };
+      pending.captured = true;
+      btn.textContent = '💾 Save (no weather data)';
+      btn.onclick = saveLocation;
+      btn.disabled = false;
+    }
+
+  }, err => {
+    showStatus('log-status', 'Location access denied. Check browser permissions.', 'error');
+    btn.disabled = false;
+    btn.textContent = '📍 Capture Location + Weather';
+    btn.onclick = captureLocation;
+  }, { enableHighAccuracy: true, timeout: 12000 });
+}
+
+async function saveLocation() {
+  const selVal = document.getElementById('spot-select').value;
+  const newVal = document.getElementById('spot-new').value.trim();
+  const spotName = selVal === '__new__' ? newVal : selVal;
+  if (!spotName) { showStatus('log-status','Select or enter a spot name.','error'); return; }
+  if (!pending.captured) { showStatus('log-status','Capture your location first.','error'); return; }
+
+  addSpot(spotName);
+
+  const count = parseInt(document.getElementById('count-input').value) || 0;
+  const wx = pending.wx;
+  const trend = mode === 'fish' ? pressureTrend(wx.pressureNow, wx.pressurePrev) : null;
+
+  const entry = {
+    id: Date.now(),
+    date: today(),
+    tripId: today(),
+    spotName,
+    lat: pending.lat,
+    lng: pending.lng,
+    windSpeed: wx.windSpeed,
+    windDir: wx.windDir,
+    windDeg: wx.windDeg,
+    feelsLike: wx.feelsLike,
+    cloudCover: wx.cloudCover,
+    ...(mode === 'hunt'
+      ? { precip: wx.precip, soilMoisture: wx.soilMoisture, birds: count, miles: '' }
+      : { pressureNow: wx.pressureNow, pressurePrev: wx.pressurePrev, pressureTrend: trend?.label || '—', fish: count })
+  };
+
+  if (mode === 'hunt') {
+    huntEntries.push(entry);
+    localStorage.setItem('rl_hunt', JSON.stringify(huntEntries));
+  } else {
+    fishEntries.push(entry);
+    localStorage.setItem('rl_fish', JSON.stringify(fishEntries));
+  }
+
+  // Google Sheets push
+  if (config.scriptUrl) {
+    const payload = mode === 'hunt'
+      ? { sheet:'hunt', Date:entry.date, TripID:entry.tripId, SpotName:entry.spotName, Lat:entry.lat, Lng:entry.lng, WindSpeed:entry.windSpeed, WindDir:entry.windDir, FeelsLike:entry.feelsLike, CloudCover:entry.cloudCover, Precip:entry.precip, SoilMoisture:entry.soilMoisture, Birds:entry.birds, Miles:'' }
+      : { sheet:'fish', Date:entry.date, TripID:entry.tripId, SpotName:entry.spotName, Lat:entry.lat, Lng:entry.lng, WindSpeed:entry.windSpeed, WindDir:entry.windDir, FeelsLike:entry.feelsLike, CloudCover:entry.cloudCover, Pressure:mbarToInHg(entry.pressureNow), PressureTrend:entry.pressureTrend, Fish:entry.fish };
+    fetch(config.scriptUrl, { method:'POST', body:JSON.stringify(payload), mode:'no-cors' }).catch(()=>{});
+  }
+
+  // Reset
+  document.getElementById('spot-select').value = '';
+  document.getElementById('spot-new').value = '';
+  document.getElementById('spot-new').style.display = 'none';
+  document.getElementById('count-input').value = 0;
+  pending = { lat:null, lng:null, wx:null, captured:false };
+  renderWxGrid(null);
+  const btn = document.getElementById('capture-btn');
+  btn.textContent = '📍 Capture Location + Weather';
+  btn.onclick = captureLocation;
+  btn.disabled = false;
+  hideStatus('log-status');
+
+  const noun = mode === 'hunt' ? `${count} bird${count!==1?'s':''}` : `${count} fish`;
+  showStatus('log-status', `✓ "${spotName}" saved — ${noun}.`, 'success');
+  renderToday();
+}
+
+// ─── MILES ────────────────────────────────────────────────────
+function saveMiles() {
+  const miles = parseFloat(document.getElementById('miles-input').value);
+  if (isNaN(miles)) return;
+  const t = today();
+  huntEntries.forEach(e => { if (e.date === t) e.miles = miles; });
+  localStorage.setItem('rl_hunt', JSON.stringify(huntEntries));
+  if (config.scriptUrl) {
+    fetch(config.scriptUrl, { method:'POST', body:JSON.stringify({ sheet:'hunt', Date:t, TripID:t, SpotName:'__MILES__', Lat:'',Lng:'',WindSpeed:'',WindDir:'',FeelsLike:'',CloudCover:'',Precip:'',Birds:'',Miles:miles }), mode:'no-cors' }).catch(()=>{});
+  }
+  document.getElementById('miles-input').value = '';
+  renderToday();
+}
+
+// ─── RENDER TODAY ─────────────────────────────────────────────
+function renderToday() {
+  const t = today();
+  document.getElementById('today-date').textContent = formatDateShort(t);
+  const entries = mode === 'hunt'
+    ? huntEntries.filter(e => e.date === t && e.spotName !== '__MILES__')
+    : fishEntries.filter(e => e.date === t);
+
+  if (mode === 'hunt') {
+    const totalBirds = entries.reduce((a,e)=>a+e.birds,0);
+    const miles = entries.length && entries[entries.length-1].miles ? entries[entries.length-1].miles : '—';
+    document.getElementById('today-locs').textContent = entries.length;
+    document.getElementById('today-birds').textContent = totalBirds;
+    document.getElementById('today-miles').textContent = miles;
+  } else {
+    const totalFish = entries.reduce((a,e)=>a+e.fish,0);
+    document.getElementById('today-fish-locs').textContent = entries.length;
+    document.getElementById('today-fish').textContent = totalFish;
+  }
+
+  const list = document.getElementById('today-list');
+  if (entries.length === 0) {
+    list.innerHTML = `<div style="color:var(--text3);font-size:13px;text-align:center;padding:8px 0">No locations logged today.</div>`;
+    return;
+  }
+  list.innerHTML = entries.map(e => {
+    const count = mode === 'hunt' ? e.birds : e.fish;
+    const pinCls = count > 0 ? (mode+'-has') : 'none';
+    const meta = mode === 'hunt'
+      ? `${e.windDir} ${e.windSpeed}mph · ${e.feelsLike}°F · ${e.cloudCover}% cloud · ${e.soilMoisture != null ? soilMoistureLabel(e.soilMoisture) : '—'}`
+      : `${e.windDir} ${e.windSpeed}mph · ${mbarToInHg(e.pressureNow)} inHg ${e.pressureTrend}`;
+    return `<div class="loc-item">
+      <div><div class="loc-name">${e.spotName}</div><div class="loc-meta">${meta}</div></div>
+      <div class="count-pin ${pinCls}">${count}</div>
+    </div>`;
+  }).join('');
+  checkSetup();
+}
+
+// ─── MAP ──────────────────────────────────────────────────────
+function renderMap() {
+  const entries = mode === 'hunt'
+    ? huntEntries.filter(e => e.spotName !== '__MILES__' && e.lat)
+    : fishEntries.filter(e => e.lat);
+
+  document.getElementById('hunt-map-wrap').style.display = mode==='hunt' ? 'block' : 'none';
+  document.getElementById('fish-map-wrap').style.display = mode==='fish' ? 'block' : 'none';
+  const mapId = mode+'-map';
+  const empty = document.getElementById('map-empty');
+
+  if (!maps[mode]) {
+    maps[mode] = L.map(mapId, { zoomControl: true });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution:'© OpenStreetMap © Carto', maxZoom:18
+    }).addTo(maps[mode]);
+  }
+
+  // Clear markers
+  maps[mode].eachLayer(l => { if (l instanceof L.Marker) maps[mode].removeLayer(l); });
+
+  if (entries.length === 0) {
+    empty.style.display = 'block';
+    document.getElementById('map-empty-icon').textContent = mode==='hunt' ? '🦃' : '🎣';
+    document.getElementById('map-empty-text').textContent = 'No locations logged yet.';
+    maps[mode].setView([44.5,-100],5);
+    return;
+  }
+  empty.style.display = 'none';
+
+  const bounds = [];
+  const accentColor = mode === 'hunt' ? '#c8860a' : '#1a7fa0';
+  const textColor = mode === 'hunt' ? '#000' : '#fff';
+
+  entries.forEach(e => {
+    const count = mode === 'hunt' ? e.birds : e.fish;
+    const hasCount = count > 0;
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="
+        width:44px;height:44px;border-radius:50%;
+        background:${hasCount ? accentColor : '#1c2022'};
+        border:2px solid ${hasCount ? accentColor : '#3a4a50'};
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        color:${hasCount ? textColor : '#4a6060'};
+        font-family:'Lato',sans-serif;font-weight:700;
+        box-shadow:0 2px 8px rgba(0,0,0,0.6);
+      ">
+        <div style="font-size:13px;line-height:1.1">${count}</div>
+        <div style="font-size:8px;opacity:0.85;line-height:1">${formatDateShort(e.date).replace(' ','&nbsp;')}</div>
+      </div>`,
+      iconSize:[44,44], iconAnchor:[22,22]
+    });
+
+    const popupContent = mode === 'hunt'
+      ? `<div style="font-family:'Lato',sans-serif;min-width:150px;">
+           <div style="font-weight:700;font-size:14px;margin-bottom:4px">${e.spotName}</div>
+           <div style="font-size:12px;color:#888">${formatDate(e.date)}</div>
+           <div style="font-size:12px;margin-top:6px">🐦 ${e.birds} birds</div>
+           <div style="font-size:12px">🌬 ${e.windDir} ${e.windSpeed}mph</div>
+           <div style="font-size:12px">🌡 ${e.feelsLike}°F feels like</div>
+           <div style="font-size:12px">☁ ${e.cloudCover}% cloud cover</div>
+           <div style="font-size:12px">🌧 Precip: ${e.precip > 0 ? e.precip+' in/hr' : 'None'}</div>
+           <div style="font-size:12px">🌱 Soil: ${e.soilMoisture != null ? soilMoistureLabel(e.soilMoisture) : '—'}</div>
+         </div>`
+      : `<div style="font-family:'Lato',sans-serif;min-width:150px;">
+           <div style="font-weight:700;font-size:14px;margin-bottom:4px">${e.spotName}</div>
+           <div style="font-size:12px;color:#888">${formatDate(e.date)}</div>
+           <div style="font-size:12px;margin-top:6px">🐟 ${e.fish} fish</div>
+           <div style="font-size:12px">🌬 ${e.windDir} ${e.windSpeed}mph</div>
+           <div style="font-size:12px">🌡 ${e.feelsLike}°F feels like</div>
+           <div style="font-size:12px">☁ ${e.cloudCover}% cloud cover</div>
+           <div style="font-size:12px">📊 ${mbarToInHg(e.pressureNow)} inHg · ${e.pressureTrend}</div>
+         </div>`;
+
+    L.marker([e.lat, e.lng], {icon}).bindPopup(popupContent).addTo(maps[mode]);
+    bounds.push([e.lat, e.lng]);
+  });
+
+  if (bounds.length > 0) maps[mode].fitBounds(bounds, {padding:[30,30], maxZoom:12});
+}
+
+// ─── TRIPS ────────────────────────────────────────────────────
+function setFilter(f) {
+  tripsFilter = f;
+  document.getElementById('ftab-all').className = 'filter-tab' + (f==='all'?' active-all':'');
+  document.getElementById('ftab-hunt').className = 'filter-tab' + (f==='hunt'?' active-hunt':'');
+  document.getElementById('ftab-fish').className = 'filter-tab' + (f==='fish'?' active-fish':'');
+  renderTrips();
+}
+
+function renderTrips() {
+  const container = document.getElementById('trips-list');
+  const allHunt = huntEntries.filter(e => e.spotName !== '__MILES__');
+  const allFish = fishEntries;
+
+  // Build combined trip list
+  let trips = [];
+  if (tripsFilter !== 'fish') {
+    const byDate = {};
+    allHunt.forEach(e => { (byDate[e.date] = byDate[e.date]||[]).push(e); });
+    Object.entries(byDate).forEach(([date,locs]) => trips.push({ date, type:'hunt', locs }));
+  }
+  if (tripsFilter !== 'hunt') {
+    const byDate = {};
+    allFish.forEach(e => { (byDate[e.date] = byDate[e.date]||[]).push(e); });
+    Object.entries(byDate).forEach(([date,locs]) => trips.push({ date, type:'fish', locs }));
+  }
+
+  trips.sort((a,b) => b.date.localeCompare(a.date) || (a.type < b.type ? -1 : 1));
+
+  if (trips.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">📋</div>No trips logged yet.</div>';
+    return;
+  }
+
+  container.innerHTML = trips.map((trip, i) => {
+    const isHunt = trip.type === 'hunt';
+    const totalCount = trip.locs.reduce((a,e) => a+(isHunt ? e.birds : e.fish), 0);
+    const miles = isHunt && trip.locs.length ? (trip.locs[trip.locs.length-1].miles || '—') : null;
+    const icon = isHunt ? '🦃' : '🎣';
+    const noun = isHunt ? 'birds' : 'fish';
+    const uid = `trip-${i}`;
+
+    const locsHtml = trip.locs.map(e => {
+      const count = isHunt ? e.birds : e.fish;
+      const pinCls = count > 0 ? (trip.type+'-has') : 'none';
+      const meta = isHunt
+        ? `${e.windDir} ${e.windSpeed}mph · ${e.feelsLike}°F · ${e.cloudCover}% cloud · ${e.precip>0?e.precip+' in/hr precip':'no precip'} · ${e.soilMoisture != null ? soilMoistureLabel(e.soilMoisture) : '—'}`
+        : `${e.windDir} ${e.windSpeed}mph · ${e.feelsLike}°F · ${mbarToInHg(e.pressureNow)} inHg ${e.pressureTrend}`;
+      return `<div class="loc-item">
+        <div><div class="loc-name">${e.spotName}</div><div class="loc-meta">${meta}</div></div>
+        <div class="count-pin ${pinCls}">${count}</div>
+      </div>`;
+    }).join('');
+
+    return `<div class="trip-card">
+      <div class="trip-header ${trip.type}" onclick="toggleTrip('${uid}')">
+        <div>
+          <div class="trip-date ${trip.type}">${icon} ${formatDate(trip.date)}</div>
+          <div class="trip-meta">${trip.locs.length} location${trip.locs.length!==1?'s':''}</div>
+        </div>
+        <div class="trip-summary">
+          <div style="font-family:'Playfair Display',serif;font-size:18px;color:${isHunt?'var(--hunt2)':'var(--fish2)'};">${totalCount} ${noun}</div>
+          ${miles !== null ? `<div>${miles !== '—' ? miles+' mi' : '— mi'}</div>` : ''}
+        </div>
+      </div>
+      <div id="${uid}" style="display:none" class="trip-body">${locsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+function toggleTrip(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// ─── SETTINGS ─────────────────────────────────────────────────
+function saveSettings() {
+  config.sheetId = document.getElementById('sheet-id-input').value.trim();
+  config.scriptUrl = document.getElementById('script-url-input').value.trim();
+  localStorage.setItem('rl_config', JSON.stringify(config));
+  showStatus('settings-status', 'Connected! Data will now save to Google Sheets.', 'success');
+  checkSetup();
+}
+
+function renderSettings() {
+  if (config.sheetId) document.getElementById('sheet-id-input').value = config.sheetId;
+  if (config.scriptUrl) document.getElementById('script-url-input').value = config.scriptUrl;
+
+  const all = spots;
+  const list = document.getElementById('spots-list');
+  if (all.length === 0) { list.innerHTML = '<div style="color:var(--text3);font-size:13px;">No spots saved yet.</div>'; return; }
+  list.innerHTML = all.map(s => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:13px;">${s.mode==='hunt'?'🦃':'🎣'} ${s.name}</span>
+      <button onclick="removeSpot('${s.name}','${s.mode}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:18px;">×</button>
+    </div>`).join('');
+}
+
+function removeSpot(name, m) {
+  spots = spots.filter(s => !(s.name===name && s.mode===m));
+  localStorage.setItem('rl_spots', JSON.stringify(spots));
+  renderSettings();
+  populateSpotDropdown();
+}
+
+function clearSpots() {
+  if (!confirm('Remove all saved spot names?')) return;
+  spots = [];
+  localStorage.setItem('rl_spots', '[]');
+  renderSettings();
+  populateSpotDropdown();
+}
+
+function clearAllData() {
+  if (!confirm('Delete ALL local hunt and fish data? Cannot be undone.')) return;
+  huntEntries = []; fishEntries = [];
+  localStorage.setItem('rl_hunt','[]');
+  localStorage.setItem('rl_fish','[]');
+  renderToday();
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────
+function exportCSV(type) {
+  const isHunt = type === 'hunt';
+  const headers = isHunt
+    ? ['Date','TripID','SpotName','Lat','Lng','WindSpeed','WindDir','FeelsLike','CloudCover','Precip','SoilMoisture','Birds','Miles']
+    : ['Date','TripID','SpotName','Lat','Lng','WindSpeed','WindDir','FeelsLike','CloudCover','Pressure_inHg','PressureTrend','Fish'];
+  const data = isHunt ? huntEntries.filter(e=>e.spotName!=='__MILES__') : fishEntries;
+  const rows = data.map(e => isHunt
+    ? [e.date,e.tripId,e.spotName,e.lat,e.lng,e.windSpeed,e.windDir,e.feelsLike,e.cloudCover,e.precip,e.soilMoisture,e.birds,e.miles]
+    : [e.date,e.tripId,e.spotName,e.lat,e.lng,e.windSpeed,e.windDir,e.feelsLike,e.cloudCover,mbarToInHg(e.pressureNow),e.pressureTrend,e.fish]
+  ).map(r => r.map(v=>`"${v}"`).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = `${type}-log.csv`;
+  a.click();
+}
+
+// ─── UTILS ────────────────────────────────────────────────────
+function showStatus(id, msg, type) {
+  const el = document.getElementById(id);
+  el.textContent = msg; el.className = 'status ' + type;
+  if (type === 'info' && mode === 'fish') el.classList.add('fish');
+}
+function hideStatus(id) { document.getElementById(id).className = 'status'; }
+function checkSetup() {
+  document.getElementById('setup-banner').style.display = config.scriptUrl ? 'none' : 'block';
+}
+
+// ─── INIT ─────────────────────────────────────────────────────
+const d = new Date();
+document.getElementById('today-date').textContent = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+populateSpotDropdown();
+renderToday();
+checkSetup();
+setMode('hunt');
+</script>
+</body>
+</html>
